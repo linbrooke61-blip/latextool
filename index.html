@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>专业排版工具 - 完美导出版</title>
+    <title>专业排版工具 - 物理分页预览版</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -22,44 +22,69 @@
             --paper-font-family: 'Times New Roman', 'Source Han Sans CN', serif;
             --paper-margin-top: 25mm;
             --paper-margin-bottom: 25mm;
-            --paper-margin-left: 25mm;
-            --paper-margin-right: 25mm;
+            --paper-margin-left: 20mm;
+            --paper-margin-right: 20mm;
         }
 
+        /* 预览区背景设定 */
+        #preview-wrapper {
+            background-color: #e5e7eb; /* 灰色背景衬托白色纸张 */
+        }
+
+        /* 纸张容器变更为 Flex 布局，用于排列多张独立页面 */
         #paper-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem; /* 两张纸之间的视觉间距 */
+            padding: 2rem 0; 
+            width: 100%;
+        }
+
+        /* 独立的物理 A4 纸样式 */
+        .a4-page {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             background: white;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            margin: 2rem auto;
-            padding: var(--paper-margin-top) var(--paper-margin-right) var(--paper-margin-bottom) var(--paper-margin-left);
             box-sizing: border-box;
+            padding: var(--paper-margin-top) var(--paper-margin-right) var(--paper-margin-bottom) var(--paper-margin-left);
+            overflow: hidden; /* 超出单页内容自动截断（由 JS 负责移交下一页） */
+            flex-shrink: 0;
+            position: relative;
+            page-break-after: always; /* 确保打印时也是一页一页的 */
+        }
+
+        /* 页面内容区 */
+        .page-content {
+            width: 100%;
+            height: 100%; /* 自动计算出剥离边距后的实际内容高度 */
+            position: relative;
             font-size: var(--paper-font-size);
             line-height: var(--paper-line-height);
             font-family: var(--paper-font-family);
             color: #1a1a1a;
             word-wrap: break-word;
-            position: relative;
         }
 
-        /* 极致顶部清理 */
-        #paper-container > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
+        /* 极致顶部清理：确保每一页的开头绝对顶格 */
+        .page-content > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
 
-        /* 内容样式 */
-        #paper-container h1 { font-size: 2em; font-weight: bold; margin-bottom: 1em; text-align: center; }
-        #paper-container h2 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.6em 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
-        #paper-container p { margin-bottom: 0.8em; text-align: justify; }
-        #paper-container ul, #paper-container ol { margin-bottom: 1em; padding-left: 2em; }
-        #paper-container li { margin-bottom: 0.3em; }
-        
-        /* 公式展示 */
+        /* 内容元素基础样式 */
+        .page-content h1 { font-size: 2em; font-weight: bold; margin-bottom: 1em; text-align: center; }
+        .page-content h2 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.6em 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .page-content p { margin-bottom: 0.8em; text-align: justify; }
+        .page-content ul, .page-content ol { margin-bottom: 1em; padding-left: 2em; }
+        .page-content li { margin-bottom: 0.3em; }
         .katex-display { margin: 1em 0; }
 
+        /* 打印时去除阴影和间距 */
         @media print {
             body { background: white; }
             #sidebar { display: none !important; }
-            #preview-wrapper { margin: 0 !important; padding: 0 !important; }
-            #paper-container { box-shadow: none !important; margin: 0 !important; width: 100% !important; padding: 0 !important; }
+            #preview-wrapper { margin: 0 !important; padding: 0 !important; background-color: white; }
+            #paper-container { gap: 0; padding: 0; }
+            .a4-page { box-shadow: none; margin: 0; border: none; }
         }
     </style>
 </head>
@@ -68,7 +93,7 @@
     <!-- 左侧面板 -->
     <aside id="sidebar" class="w-96 bg-white shadow-xl flex flex-col z-10 border-r h-full">
         <div class="p-4 border-b bg-slate-50 flex flex-col gap-3">
-            <h2 class="text-lg font-bold text-slate-800">专业排版与导出系统</h2>
+            <h2 class="text-lg font-bold text-slate-800">排版与导出系统</h2>
             <div class="flex flex-wrap gap-2">
                 <button onclick="downloadHtml()" class="bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-[11px] transition">本地版</button>
                 <button onclick="exportDOCX()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-[11px] transition font-bold shadow-md">导出 Word (原生公式)</button>
@@ -79,7 +104,7 @@
         <div class="flex-1 overflow-y-auto p-5 space-y-6">
             <div class="space-y-2">
                 <label class="font-bold text-gray-700">内容输入</label>
-                <textarea id="editor" class="w-full h-96 p-3 border rounded font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none" placeholder="输入 Markdown..."></textarea>
+                <textarea id="editor" class="w-full h-80 p-3 border rounded font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none" placeholder="输入 Markdown..."></textarea>
             </div>
 
             <div class="space-y-4">
@@ -98,18 +123,18 @@
                 <div class="bg-slate-50 p-3 rounded border border-slate-100 space-y-3">
                     <p class="text-[10px] font-bold text-slate-400">页边距控制 (mm)</p>
                     <div class="grid grid-cols-2 gap-3">
-                        <div><label class="text-[9px]">上</label><input type="number" id="margin-top" value="25" class="w-full border p-1 rounded"></div>
-                        <div><label class="text-[9px]">下</label><input type="number" id="margin-bottom" value="25" class="w-full border p-1 rounded"></div>
-                        <div><label class="text-[9px]">左</label><input type="number" id="margin-left" value="20" class="w-full border p-1 rounded"></div>
-                        <div><label class="text-[9px]">右</label><input type="number" id="margin-right" value="20" class="w-full border p-1 rounded"></div>
+                        <div><label class="text-[9px]">上</label><input type="number" id="margin-top" value="25" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">下</label><input type="number" id="margin-bottom" value="25" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">左</label><input type="number" id="margin-left" value="20" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">右</label><input type="number" id="margin-right" value="20" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
                     </div>
-                    <button onclick="updateStyles()" class="w-full bg-slate-200 py-1 text-[10px] rounded hover:bg-slate-300">应用边距</button>
                 </div>
             </div>
         </div>
     </aside>
 
     <main id="preview-wrapper" class="flex-1 overflow-y-auto relative">
+        <!-- 这里不再是一个大盒子，而是由 JS 动态装填多张 .a4-page 纸 -->
         <div id="paper-container"></div>
     </main>
 
@@ -117,20 +142,87 @@
 
     <script>
         const editor = document.getElementById('editor');
-        const paper = document.getElementById('paper-container');
         const printPageStyle = document.getElementById('print-page-style');
+        
+        let currentPage, contentArea;
+        let renderTimeout;
 
         marked.setOptions({ breaks: true, gfm: true });
 
-        // 默认内容
-        editor.value = `# 排版标题\n\n这是一个列表测试：\n* **第一项**：内容描述。\n* **第二项**：公式 $E = mc^2$。\n\n$$ \\int x dx = \\frac{1}{2}x^2 + C $$\n\n正常段落测试。`;
+        editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$ \\int_a^b f(x) dx = F(b) - F(a) $$\n\n正常段落测试。无论在预览区还是在最终导出的 PDF 中，页面的数量和内容分布都是绝对一致的。`;
 
+        /**
+         * 动态生成一张新的 A4 纸张 DOM
+         */
+        function createNewPage() {
+            const paperContainer = document.getElementById('paper-container');
+            currentPage = document.createElement('div');
+            currentPage.className = 'a4-page';
+            
+            contentArea = document.createElement('div');
+            contentArea.className = 'page-content';
+            currentPage.appendChild(contentArea);
+            
+            paperContainer.appendChild(currentPage);
+        }
+
+        /**
+         * 智能装填算法：将节点逐个塞入纸张，超高则开新纸
+         */
+        function appendNodeToPages(node) {
+            contentArea.appendChild(node);
+            
+            // 检查内容是否溢出了当前纸张的安全高度
+            if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                
+                // 智能处理列表 (UL/OL)：允许在列表项之间断页
+                if ((node.tagName === 'UL' || node.tagName === 'OL') && node.childNodes.length > 1) {
+                    contentArea.removeChild(node);
+                    
+                    let currentList = node.cloneNode(false);
+                    contentArea.appendChild(currentList);
+                    
+                    const items = Array.from(node.childNodes);
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        currentList.appendChild(item);
+                        
+                        if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                            currentList.removeChild(item);
+                            if (currentList.childNodes.length === 0) contentArea.removeChild(currentList);
+                            
+                            createNewPage(); // 开启新一页
+                            currentList = node.cloneNode(false);
+                            contentArea.appendChild(currentList);
+                            currentList.appendChild(item);
+                        }
+                    }
+                } else {
+                    // 普通块级元素
+                    if (contentArea.childNodes.length === 1) {
+                        // 只有一个超大元素，允许它溢出被截断，为后续元素开新页
+                        createNewPage();
+                    } else {
+                        // 将该元素移至下一页
+                        contentArea.removeChild(node);
+                        createNewPage();
+                        contentArea.appendChild(node);
+                        // 如果它在新页依然超高，继续开新页保障后续流程
+                        if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                            createNewPage();
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * 核心解析与分页调度器
+         */
         function parseAndRender(text) {
             if (typeof katex === 'undefined') return;
             
-            // 预处理：修复可能导致星号残留的空行问题
             let cleanText = text.replace(/^\s*\*\s+/gm, '* ');
-
             const mathBlocks = [];
             let processedText = cleanText.replace(/\$\$(.*?)\$\$/gs, (m, p1) => {
                 mathBlocks.push({ math: p1, display: true });
@@ -144,15 +236,29 @@
             let html = marked.parse(processedText);
             html = html.replace(/%%%MATH_(\d+)%%%/g, (m, i) => {
                 const item = mathBlocks[i];
-                return katex.renderToString(item.math, { 
-                    displayMode: item.display, 
-                    output: 'htmlAndMathml', 
-                    throwOnError: false 
-                });
+                return katex.renderToString(item.math, { displayMode: item.display, output: 'htmlAndMathml', throwOnError: false });
             });
-            paper.innerHTML = html;
+
+            // 清空容器，准备排版
+            document.getElementById('paper-container').innerHTML = '';
+            
+            // 将生成的 HTML 放入隐藏内存块中分解
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = html;
+            
+            // 初始化第一页
+            createNewPage();
+            
+            // 逐个节点装填
+            const nodes = Array.from(hiddenDiv.childNodes);
+            for (let i = 0; i < nodes.length; i++) {
+                appendNodeToPages(nodes[i]);
+            }
         }
 
+        /**
+         * 更新样式参数（引入防抖，避免拖动滑块时疯狂重排）
+         */
         function updateStyles() {
             const vals = {
                 fz: document.getElementById('font-size').value,
@@ -174,10 +280,14 @@
             document.documentElement.style.setProperty('--paper-margin-right', `${vals.mr}mm`);
 
             printPageStyle.innerHTML = `@media print { @page { size: A4; margin: ${vals.mt}mm ${vals.mr}mm ${vals.mb}mm ${vals.ml}mm !important; } }`;
+
+            // 样式改变会导致容量改变，需要重新计算分页
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
         }
 
         /**
-         * 完美 Word 导出：清除 HTML 杂质，保留原生公式
+         * 导出 Word 适配分页：从各页中提取纯粹的节点组合
          */
         function exportDOCX() {
             const mt = document.getElementById('margin-top').value;
@@ -187,34 +297,31 @@
             const fz = document.getElementById('font-size').value;
             const lh = document.getElementById('line-height').value;
 
-            // 克隆内容
-            const clone = paper.cloneNode(true);
+            // 创建临时容器合并所有分页内容
+            const tempDiv = document.createElement('div');
+            document.querySelectorAll('.page-content').forEach(page => {
+                Array.from(page.childNodes).forEach(node => {
+                    tempDiv.appendChild(node.cloneNode(true));
+                });
+            });
             
-            // 1. 彻底移除 KaTeX 的 HTML 视图，只留下 MathML
-            clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-            
-            // 2. 清理可能导致 Word 报错的空标签
-            clone.querySelectorAll('.katex-display').forEach(el => {
+            tempDiv.querySelectorAll('.katex-html').forEach(el => el.remove());
+            tempDiv.querySelectorAll('.katex-display').forEach(el => {
                 el.style.textAlign = "center";
                 el.style.margin = "12pt 0";
             });
 
-            const content = clone.innerHTML;
+            const content = tempDiv.innerHTML;
 
             const html = `
                 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
                 <head>
                     <meta charset='utf-8'>
                     <!--[if gte mso 9]>
-                    <xml>
-                        <w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument>
-                    </xml>
+                    <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml>
                     <![endif]-->
                     <style>
-                        @page Section1 {
-                            size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm;
-                            mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0;
-                        }
+                        @page Section1 { size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0; }
                         div.Section1 { page: Section1; }
                         body { font-family: 'Times New Roman', serif; font-size: ${fz}px; line-height: ${lh}; }
                         h1 { font-size: 24pt; text-align: center; margin: 0 0 12pt 0; }
@@ -224,41 +331,50 @@
                         li { mso-special-format: bullet; }
                     </style>
                 </head>
-                <body>
-                    <div class="Section1">${content}</div>
-                </body>
+                <body><div class="Section1">${content}</div></body>
                 </html>
             `;
 
             const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
-            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
+            a.href = URL.createObjectURL(blob);
             a.download = '排版完成文档.doc'; 
             a.click();
         }
 
+        /**
+         * 导出 PDF 适配分页：精准捕获每一个物理纸张块
+         */
         async function exportPDF() {
             const btn = document.getElementById('export-btn');
             btn.innerHTML = "...";
-            const mt = document.getElementById('margin-top').value;
-            const mb = document.getElementById('margin-bottom').value;
-            const ml = document.getElementById('margin-left').value;
-            const mr = document.getElementById('margin-right').value;
 
-            const element = document.getElementById('paper-container');
-            const opt = {
-                margin: [parseInt(mt), parseInt(ml), parseInt(mb), parseInt(mr)],
-                filename: 'document.pdf',
-                html2canvas: { scale: 3 },
-                jsPDF: { unit: 'mm', format: 'a4' }
-            };
-            const oldPad = element.style.padding;
-            element.style.padding = "0";
-            html2pdf().set(opt).from(element).save().then(() => {
-                element.style.padding = oldPad;
+            if (window.self !== window.top) {
+                const element = document.getElementById('paper-container');
+                const pages = document.querySelectorAll('.a4-page');
+                
+                // 沙盒环境下暂时关闭视觉间距，方便底层截图无缝衔接分页
+                const originalGap = element.style.gap;
+                element.style.gap = '0';
+                pages.forEach(p => p.style.boxShadow = 'none');
+
+                // 注意：由于页面块已经自带 padding，这里 html2pdf margin 必须设为 0
+                const opt = {
+                    margin: 0,
+                    filename: 'document.pdf',
+                    html2canvas: { scale: 3 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                html2pdf().set(opt).from(element).save().then(() => {
+                    element.style.gap = originalGap;
+                    pages.forEach(p => p.style.boxShadow = '');
+                    btn.innerHTML = "导出 PDF";
+                });
+            } else {
+                window.print();
                 btn.innerHTML = "导出 PDF";
-            });
+            }
         }
 
         function downloadHtml() {
@@ -266,11 +382,16 @@
             const blob = new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], { type: 'text/html' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = '排版工具_本地版.html';
+            a.download = '排版工具_多页预览版.html';
             a.click();
         }
 
-        editor.addEventListener('input', () => parseAndRender(editor.value));
+        // 绑定带防抖的输入事件
+        editor.addEventListener('input', () => {
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
+        });
+
         window.addEventListener('DOMContentLoaded', () => { updateStyles(); parseAndRender(editor.value); });
     </script>
 </body>

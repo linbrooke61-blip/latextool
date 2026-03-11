@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown 排版工具1.0</title>
+    <title>Markdown排版工具1.0</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -94,7 +94,7 @@
     <!-- 左侧面板 -->
     <aside id="sidebar" class="w-96 bg-white shadow-xl flex flex-col z-10 border-r h-full">
         <div class="p-4 border-b bg-slate-50 flex flex-col gap-3">
-            <h2 class="text-lg font-bold text-slate-800">排版与导出系统</h2>
+            <h2 class="text-lg font-bold text-slate-800">Markdown排版工具1.0</h2>
             <div class="flex flex-wrap gap-2">
                 <button onclick="downloadHtml()" class="bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-[11px] transition">本地版</button>
                 <button onclick="exportDOCX()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-[11px] transition font-bold shadow-md">导出 Word (原生公式)</button>
@@ -149,7 +149,7 @@
 
         marked.setOptions({ breaks: true, gfm: true });
 
-        editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$ \\int_a^b f(x) dx = F(b) - F(a) $$\n\n正常段落测试。现在导出的 PDF 将会与您在这里看到的排版严丝合缝地对齐。`;
+        editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$\\int_a^b f(x) dx = F(b) - F(a)$$\n\n正常段落测试。现在导出的 PDF 将会与您在这里看到的排版严丝合缝地对齐。`;
 
         /**
          * 动态生成一张新的 A4 纸张 DOM

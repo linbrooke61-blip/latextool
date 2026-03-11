@@ -12,8 +12,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 
-    <!-- 备用 PDF 引擎 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- 引入 jsPDF 和 html2canvas 实现精准的逐页所见即所得导出 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
         :root {
@@ -134,7 +135,6 @@
     </aside>
 
     <main id="preview-wrapper" class="flex-1 overflow-y-auto relative">
-        <!-- 这里不再是一个大盒子，而是由 JS 动态装填多张 .a4-page 纸 -->
         <div id="paper-container"></div>
     </main>
 
@@ -149,7 +149,7 @@
 
         marked.setOptions({ breaks: true, gfm: true });
 
-        editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$ \\int_a^b f(x) dx = F(b) - F(a) $$\n\n正常段落测试。无论在预览区还是在最终导出的 PDF 中，页面的数量和内容分布都是绝对一致的。`;
+        editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$ \\int_a^b f(x) dx = F(b) - F(a) $$\n\n正常段落测试。现在导出的 PDF 将会与您在这里看到的排版严丝合缝地对齐。`;
 
         /**
          * 动态生成一张新的 A4 纸张 DOM
@@ -287,7 +287,7 @@
         }
 
         /**
-         * 导出 Word 适配分页：从各页中提取纯粹的节点组合
+         * 导出 Word 适配分页
          */
         function exportDOCX() {
             const mt = document.getElementById('margin-top').value;
@@ -338,42 +338,65 @@
             const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = '排版完成文档.doc'; 
+            a.download = '排版文档.doc'; 
             a.click();
         }
 
         /**
-         * 导出 PDF 适配分页：精准捕获每一个物理纸张块
+         * 导出 PDF：逐页 1:1 截取渲染，保证与预览绝对一致，并直接下载
          */
         async function exportPDF() {
             const btn = document.getElementById('export-btn');
-            btn.innerHTML = "...";
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
 
-            if (window.self !== window.top) {
-                const element = document.getElementById('paper-container');
+            try {
+                // 等待最新的 DOM 更新稳定
+                await new Promise(r => setTimeout(r, 100));
+                
                 const pages = document.querySelectorAll('.a4-page');
-                
-                // 沙盒环境下暂时关闭视觉间距，方便底层截图无缝衔接分页
-                const originalGap = element.style.gap;
-                element.style.gap = '0';
-                pages.forEach(p => p.style.boxShadow = 'none');
+                const { jsPDF } = window.jspdf;
+                // 'p' 纵向, 'mm' 单位, 'a4' 纸张标准尺寸
+                const pdf = new jsPDF('p', 'mm', 'a4');
 
-                // 注意：由于页面块已经自带 padding，这里 html2pdf margin 必须设为 0
-                const opt = {
-                    margin: 0,
-                    filename: 'document.pdf',
-                    html2canvas: { scale: 3 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    
+                    btn.innerHTML = `处理中 ${i + 1}/${pages.length}...`;
+                    
+                    // 暂时移除阴影以保证截图纯净
+                    const oldShadow = page.style.boxShadow;
+                    page.style.boxShadow = 'none';
+                    
+                    // 强制采用 3 倍超高分辨率进行无损采样
+                    const canvas = await html2canvas(page, { 
+                        scale: 3, 
+                        useCORS: true,
+                        logging: false
+                    });
+                    
+                    page.style.boxShadow = oldShadow;
+                    
+                    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                    
+                    // 除了第一页，之后的都要 addPage
+                    if (i > 0) {
+                        pdf.addPage();
+                    }
+                    
+                    // 将高清图强行压入严格的 210x297 mm 的 PDF 页面中
+                    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+                }
+
+                // 直接触发文件下载行为
+                pdf.save('排版文档.pdf');
                 
-                html2pdf().set(opt).from(element).save().then(() => {
-                    element.style.gap = originalGap;
-                    pages.forEach(p => p.style.boxShadow = '');
-                    btn.innerHTML = "导出 PDF";
-                });
-            } else {
-                window.print();
-                btn.innerHTML = "导出 PDF";
+            } catch (error) {
+                console.error("PDF生成错误:", error);
+                alert("生成 PDF 时发生错误，请重试。");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
 
@@ -382,7 +405,7 @@
             const blob = new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], { type: 'text/html' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = '排版工具_多页预览版.html';
+            a.download = '排版工具_多页版.html';
             a.click();
         }
 

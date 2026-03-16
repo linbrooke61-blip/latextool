@@ -73,9 +73,10 @@
         .page-content h2 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.6em 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
         .page-content h3 { font-size: 1.25em; font-weight: bold; margin: 1em 0 0.5em 0; }
         .page-content h4 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.4em 0; }
-        .page-content p { margin-bottom: 0.8em; text-align: justify; }
+        /* 修复：取消 justify 两端对齐，改用 left 左对齐，防止出现巨大单词间距 */
+        .page-content p { margin-bottom: 0.8em; text-align: left; }
         .page-content ul, .page-content ol { margin-bottom: 1em; padding-left: 2em; }
-        .page-content li { margin-bottom: 0.3em; }
+        .page-content li { margin-bottom: 0.3em; text-align: left; }
         .page-content hr { margin: 1.5em 0; border: none; border-top: 1px solid #e5e7eb; }
         .katex-display { margin: 1em 0; }
 
@@ -263,21 +264,17 @@
             renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
         }
 
-        /**
-         * 【终极修复版】Word 原生导出：精准对接 Word 古老 HTML 解析引擎
-         */
         function exportWordNative() {
             const mt = document.getElementById('margin-top').value;
             const mb = document.getElementById('margin-bottom').value;
             const ml = document.getElementById('margin-left').value;
             const mr = document.getElementById('margin-right').value;
             
-            // 核心修复 1：Word 偏好 pt 和 %，强行使用 px 和小数会导致排版崩坏
             const fzPx = parseFloat(document.getElementById('font-size').value);
-            const ptSize = Math.round(fzPx * 0.75); // 将 px 科学转换为 pt (16px = 12pt)
+            const ptSize = Math.round(fzPx * 0.75);
             
             const lhVal = parseFloat(document.getElementById('line-height').value);
-            const lhPercent = Math.round(lhVal * 100); // 1.8 -> 180%，Word 只认百分比或绝对值
+            const lhPercent = Math.round(lhVal * 100);
 
             const tempDiv = document.createElement('div');
             document.querySelectorAll('.page-content').forEach(page => {
@@ -290,7 +287,6 @@
                 if (list.children.length === 0) list.remove();
             });
 
-            // 缝合被物理分页切断的无序/有序列表
             const childNodes = Array.from(tempDiv.childNodes);
             for (let i = childNodes.length - 1; i > 0; i--) {
                 const current = childNodes[i];
@@ -311,8 +307,6 @@
 
             const content = tempDiv.innerHTML;
 
-            // 核心修复 2：补全 h1~h6 所有层级定义，防止 Word 中途调用蓝色 Calibri 默认样式
-            // 核心修复 3：放开 padding 限制，让 Word 原生接管列表圆点缩进
             const html = `
                 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
                 <head>
@@ -321,15 +315,23 @@
                     <style>
                         @page Section1 { size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0; }
                         div.Section1 { page: Section1; }
-                        body { font-family: 'Times New Roman', serif; font-size: ${ptSize}pt; line-height: ${lhPercent}%; color: #000000; }
+                        
+                        /* 修复：强制要求 Word 中所有的内联、块级元素完全继承指定字体，防止加粗等标签突变为 Calibri */
+                        body, p, h1, h2, h3, h4, h5, h6, ul, ol, li, div, span, strong, em, b, i, a {
+                            font-family: 'Times New Roman', 'SimSun', serif !important;
+                        }
+                        
+                        body { font-size: ${ptSize}pt; line-height: ${lhPercent}%; color: #000000; }
                         h1 { font-size: ${ptSize + 8}pt; font-weight: bold; text-align: center; margin: 16pt 0 12pt 0; color: #000000; }
                         h2 { font-size: ${ptSize + 4}pt; font-weight: bold; margin: 14pt 0 8pt 0; border-bottom: 1px solid #ccc; padding-bottom: 4pt; color: #000000; }
                         h3 { font-size: ${ptSize + 2}pt; font-weight: bold; margin: 12pt 0 6pt 0; color: #000000; }
                         h4 { font-size: ${ptSize + 1}pt; font-weight: bold; margin: 10pt 0 6pt 0; color: #000000; }
                         h5, h6 { font-size: ${ptSize}pt; font-weight: bold; margin: 8pt 0 4pt 0; color: #000000; }
-                        p { margin: 0 0 8pt 0; text-align: justify; line-height: ${lhPercent}%; }
-                        ul, ol { margin: 0 0 10pt 24pt; } /* 仅保留左侧基础外边距，切勿干涉 Word 内部的填充 */
-                        li { margin-bottom: 4pt; line-height: ${lhPercent}%; }
+                        
+                        /* 修复：取消 text-align: justify 改为 left，消除大片空白和单词间隙过大的问题 */
+                        p { margin: 0 0 8pt 0; text-align: left; line-height: ${lhPercent}%; }
+                        ul, ol { margin: 0 0 10pt 24pt; }
+                        li { margin-bottom: 4pt; line-height: ${lhPercent}%; text-align: left; }
                         hr { height: 1px; border: none; border-top: 1px solid #000000; margin: 12pt 0; }
                     </style>
                 </head>
@@ -418,7 +420,8 @@
                 });
 
                 const children = [];
-                const alignJustified = AlignmentType.JUSTIFIED || "justified";
+                // 修复：DOCX 图片导出同样弃用两端对齐，统一改为左对齐
+                const alignLeft = AlignmentType.LEFT || "left";
 
                 for (const node of allNodes) {
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -439,7 +442,7 @@
                             continue;
                         }
                         const runs = await toRuns(node);
-                        children.push(new Paragraph({ alignment: alignJustified, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
+                        children.push(new Paragraph({ alignment: alignLeft, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
                         continue;
                     }
 

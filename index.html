@@ -15,6 +15,7 @@
     <!-- 引入 jsPDF 和 html2canvas 实现精准的逐页所见即所得导出 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- docx.js -->
     <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
 
     <style>
@@ -85,14 +86,14 @@
 </head>
 <body class="bg-gray-100 flex h-screen overflow-hidden text-sm">
 
-    <!-- 左侧面板 -->
-    <aside id="sidebar" class="w-96 bg-white shadow-xl flex flex-col z-10 border-r h-full">
+    <aside id="sidebar" class="w-96 bg-white shadow-xl flex flex-col z-10 border-r h-full shrink-0">
         <div class="p-4 border-b bg-slate-50 flex flex-col gap-3">
             <h2 class="text-lg font-bold text-slate-800">Markdown排版工具1.0</h2>
             <div class="flex flex-wrap gap-2">
-                <button onclick="downloadHtml()" class="bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-[11px] transition">本地版</button>
-                <button onclick="exportDOCX()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-[11px] transition font-bold shadow-md">导出 Word (原生公式)</button>
-                <button id="export-btn" onclick="exportPDF()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-[11px] transition font-bold">导出 PDF</button>
+                <button onclick="downloadHtml()" class="bg-slate-500 hover:bg-slate-600 text-white px-2 py-1.5 rounded text-[11px] transition">本地版</button>
+                <button onclick="exportWordNative()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold shadow-md" title="推荐：保留公式的Word原生编辑能力">导出 Word (原生公式)</button>
+                <button onclick="exportDOCXImage()" class="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold shadow-md" title="使用 docx.js，公式将被转换为不可编辑的图片">导出 DOCX (图片公式)</button>
+                <button id="export-btn" onclick="exportPDF()" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold">导出 PDF</button>
             </div>
         </div>
 
@@ -161,7 +162,6 @@
             contentArea.appendChild(node);
             
             if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
-                
                 if ((node.tagName === 'UL' || node.tagName === 'OL') && node.childNodes.length > 1) {
                     contentArea.removeChild(node);
                     
@@ -257,13 +257,70 @@
             renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
         }
 
-        async function exportDOCX() {
-            const exportBtn = document.querySelector('button[onclick="exportDOCX()"]');
+        /**
+         * 保留了真正能渲染出 MathML (原生公式) 的底层代码
+         */
+        function exportWordNative() {
+            const mt = document.getElementById('margin-top').value;
+            const mb = document.getElementById('margin-bottom').value;
+            const ml = document.getElementById('margin-left').value;
+            const mr = document.getElementById('margin-right').value;
+            const fz = document.getElementById('font-size').value;
+            const lh = document.getElementById('line-height').value;
+
+            const tempDiv = document.createElement('div');
+            document.querySelectorAll('.page-content').forEach(page => {
+                Array.from(page.childNodes).forEach(node => {
+                    tempDiv.appendChild(node.cloneNode(true));
+                });
+            });
+            
+            tempDiv.querySelectorAll('.katex-html').forEach(el => el.remove());
+            tempDiv.querySelectorAll('.katex-display').forEach(el => {
+                el.style.textAlign = "center";
+                el.style.margin = "12pt 0";
+            });
+
+            const content = tempDiv.innerHTML;
+
+            const html = `
+                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
+                    <style>
+                        @page Section1 { size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0; }
+                        div.Section1 { page: Section1; }
+                        body { font-family: 'Times New Roman', serif; font-size: ${fz}px; line-height: ${lh}; }
+                        h1 { font-size: 24pt; text-align: center; margin: 0 0 12pt 0; }
+                        h2 { font-size: 18pt; margin: 12pt 0 6pt 0; border-bottom: 1px solid #ccc; }
+                        p { margin: 0 0 8pt 0; text-align: justify; }
+                        ul { margin: 0 0 10pt 20pt; }
+                        li { mso-special-format: bullet; }
+                    </style>
+                </head>
+                <body><div class="Section1">${content}</div></body>
+                </html>
+            `;
+
+            const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '排版文档_原生公式版.doc'; 
+            a.click();
+        }
+
+        /**
+         * 修复后的你的 docx.js 导出代码：严格校验，包含容错处理（公式变图片）
+         */
+        async function exportDOCXImage() {
+            const exportBtn = document.querySelector('button[onclick="exportDOCXImage()"]');
             const originalText = exportBtn ? exportBtn.innerHTML : '';
             if (exportBtn) { exportBtn.disabled = true; exportBtn.innerHTML = '生成中...'; }
 
             try {
-                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, convertMillimetersToTwip } = window.docx;
+                // 修复：必须解构引入 BorderStyle
+                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, BorderStyle, convertMillimetersToTwip } = window.docx;
 
                 const mt  = parseFloat(document.getElementById('margin-top').value)    || 25;
                 const mb  = parseFloat(document.getElementById('margin-bottom').value)  || 25;
@@ -276,24 +333,32 @@
                 const spacingAfter = Math.round(fz * lhV * 15);
 
                 async function elementToImageRun(el) {
-                    const canvas = await html2canvas(el, { scale: 3, backgroundColor: null, logging: false, useCORS: true });
-                    const w = el.offsetWidth  || canvas.width  / 3;
-                    const h = el.offsetHeight || canvas.height / 3;
-                    const maxW = 450;
-                    const dispW = Math.min(w, maxW);
-                    const dispH = Math.round(h * dispW / Math.max(w, 1));
-                    const b64 = canvas.toDataURL('image/png').split(',')[1];
-                    const bin = atob(b64);
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    return new ImageRun({ data: bytes.buffer, transformation: { width: dispW, height: dispH } });
+                    try {
+                        const canvas = await html2canvas(el, { scale: 3, backgroundColor: null, logging: false, useCORS: true });
+                        const w = el.offsetWidth  || canvas.width  / 3;
+                        const h = el.offsetHeight || canvas.height / 3;
+                        const maxW = 450;
+                        const dispW = Math.max(Math.min(w, maxW), 10);
+                        const dispH = Math.max(Math.round(h * dispW / Math.max(w, 1)), 10);
+                        
+                        const b64 = canvas.toDataURL('image/png').split(',')[1];
+                        if(!b64) throw new Error("Empty Canvas");
+                        
+                        const bin = atob(b64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        return new ImageRun({ data: bytes.buffer, transformation: { width: dispW, height: dispH } });
+                    } catch (e) {
+                        console.warn("公式图片渲染失败 (可能由于字体跨域)", e);
+                        return new TextRun({ text: "[公式图片]", italics: true, color: "FF0000" });
+                    }
                 }
 
                 async function toRuns(el, bold = false, italic = false) {
                     const runs = [];
                     for (const child of el.childNodes) {
                         if (child.nodeType === Node.TEXT_NODE) {
-                            if (child.textContent) {
+                            if (child.textContent.trim() || child.textContent.includes(' ')) {
                                 runs.push(new TextRun({ text: child.textContent, bold, italics: italic, size: hp(fz), font: 'Times New Roman' }));
                             }
                         } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -338,33 +403,36 @@
                             continue;
                         }
                         const runs = await toRuns(node);
-                        children.push(new Paragraph({ alignment: AlignmentType.BOTH, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun({ text: node.textContent, size: hp(fz) })] }));
+                        // 修复：AlignmentType.BOTH 替换为 JUSTIFIED
+                        children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
                         continue;
                     }
 
                     if (tag === 'h1') {
                         const runs = await toRuns(node);
-                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: runs.length ? runs : [new TextRun('')] }));
                     } else if (tag === 'h2') {
                         const runs = await toRuns(node);
-                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: runs.length ? runs : [new TextRun('')] }));
                     } else if (tag === 'h3') {
                         const runs = await toRuns(node);
-                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: runs.length ? runs : [new TextRun('')] }));
                     } else if (tag === 'ul') {
                         for (const li of node.querySelectorAll(':scope > li')) {
                             const runs = await toRuns(li);
-                            children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun({ text: li.textContent, size: hp(fz) })] }));
+                            children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun('')] }));
                         }
                     } else if (tag === 'ol') {
                         for (const li of node.querySelectorAll(':scope > li')) {
                             const runs = await toRuns(li);
-                            children.push(new Paragraph({ numbering: { reference: 'ol-ref', level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun({ text: li.textContent, size: hp(fz) })] }));
+                            children.push(new Paragraph({ numbering: { reference: 'ol-ref', level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun('')] }));
                         }
                     } else if (tag === 'blockquote') {
-                        children.push(new Paragraph({ indent: { left: convertMillimetersToTwip(10) }, children: [new TextRun({ text: node.textContent.trim(), italics: true, size: hp(fz) })] }));
+                        const runs = await toRuns(node, false, true); // 正确传递 italic 属性
+                        children.push(new Paragraph({ indent: { left: convertMillimetersToTwip(10) }, children: runs.length ? runs : [new TextRun('')] }));
                     } else if (tag === 'hr') {
-                        children.push(new Paragraph({ border: { bottom: { style: 'single', size: 6, space: 1, color: 'AAAAAA' } }, children: [new TextRun('')] }));
+                        // 修复：必须使用 BorderStyle.SINGLE，不能用字符串 'single'
+                        children.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'AAAAAA' } }, children: [new TextRun('')] }));
                     }
                 }
 
@@ -392,7 +460,7 @@
                 const blob = await Packer.toBlob(doc);
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = '排版文档.docx';
+                a.download = '排版文档_纯净DOCX.docx';
                 a.click();
 
             } catch (err) {
@@ -456,7 +524,7 @@
             const blob = new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], { type: 'text/html' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = '排版工具_多页版.html';
+            a.download = 'Markdown排版工具1.0.html';
             a.click();
         }
 

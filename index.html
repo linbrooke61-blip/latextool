@@ -15,8 +15,9 @@
     <!-- 引入 jsPDF 和 html2canvas 实现精准的逐页所见即所得导出 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- docx.js -->
-    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
+    
+    <!-- docx.js: 降级到稳定版 7.8.2，彻底解决 v8+ 在浏览器端无法挂载 window.docx 的 bug -->
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
 
     <style>
         :root {
@@ -311,7 +312,7 @@
         }
 
         /**
-         * 修复后的你的 docx.js 导出代码：严格校验，包含容错处理（公式变图片）
+         * 修复后的 docx.js 导出代码：安全校验 window.docx 并手动处理单位转换
          */
         async function exportDOCXImage() {
             const exportBtn = document.querySelector('button[onclick="exportDOCXImage()"]');
@@ -319,8 +320,16 @@
             if (exportBtn) { exportBtn.disabled = true; exportBtn.innerHTML = '生成中...'; }
 
             try {
-                // 修复：必须解构引入 BorderStyle
-                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, BorderStyle, convertMillimetersToTwip } = window.docx;
+                // 安全防线：检查库是否成功加载
+                if (typeof window.docx === 'undefined') {
+                    throw new Error("docx 库未加载成功，请检查网络或刷新页面。");
+                }
+
+                // 移除原有的 convertMillimetersToTwip 解构，因为 7.x 版本不一定导出该工具函数
+                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, BorderStyle } = window.docx;
+
+                // 手动实现精确的毫米到 Twip 的转换公式 (1 mm ≈ 56.692913 twips)
+                const mmToTwip = mm => Math.round(mm * 56.692913);
 
                 const mt  = parseFloat(document.getElementById('margin-top').value)    || 25;
                 const mb  = parseFloat(document.getElementById('margin-bottom').value)  || 25;
@@ -383,6 +392,7 @@
                 });
 
                 const children = [];
+                const alignJustified = AlignmentType.JUSTIFIED || "justified";
 
                 for (const node of allNodes) {
                     if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -403,8 +413,7 @@
                             continue;
                         }
                         const runs = await toRuns(node);
-                        // 修复：AlignmentType.BOTH 替换为 JUSTIFIED
-                        children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
+                        children.push(new Paragraph({ alignment: alignJustified, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
                         continue;
                     }
 
@@ -428,10 +437,9 @@
                             children.push(new Paragraph({ numbering: { reference: 'ol-ref', level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun('')] }));
                         }
                     } else if (tag === 'blockquote') {
-                        const runs = await toRuns(node, false, true); // 正确传递 italic 属性
-                        children.push(new Paragraph({ indent: { left: convertMillimetersToTwip(10) }, children: runs.length ? runs : [new TextRun('')] }));
+                        const runs = await toRuns(node, false, true); 
+                        children.push(new Paragraph({ indent: { left: mmToTwip(10) }, children: runs.length ? runs : [new TextRun('')] }));
                     } else if (tag === 'hr') {
-                        // 修复：必须使用 BorderStyle.SINGLE，不能用字符串 'single'
                         children.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'AAAAAA' } }, children: [new TextRun('')] }));
                     }
                 }
@@ -443,14 +451,14 @@
                         config: [{
                             reference: 'ol-ref',
                             levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.LEFT,
-                                style: { paragraph: { indent: { left: convertMillimetersToTwip(12), hanging: convertMillimetersToTwip(6) } } } }]
+                                style: { paragraph: { indent: { left: mmToTwip(12), hanging: mmToTwip(6) } } } }]
                         }]
                     },
                     sections: [{
                         properties: {
                             page: {
-                                size: { width: convertMillimetersToTwip(210), height: convertMillimetersToTwip(297) },
-                                margin: { top: convertMillimetersToTwip(mt), right: convertMillimetersToTwip(mr), bottom: convertMillimetersToTwip(mb), left: convertMillimetersToTwip(ml) }
+                                size: { width: mmToTwip(210), height: mmToTwip(297) },
+                                margin: { top: mmToTwip(mt), right: mmToTwip(mr), bottom: mmToTwip(mb), left: mmToTwip(ml) }
                             }
                         },
                         children

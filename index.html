@@ -15,6 +15,7 @@
     <!-- 引入 jsPDF 和 html2canvas 实现精准的逐页所见即所得导出 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
 
     <style>
         :root {
@@ -27,22 +28,19 @@
             --paper-margin-right: 20mm;
         }
 
-        /* 预览区背景设定 */
         #preview-wrapper {
-            background-color: #e5e7eb; /* 灰色背景衬托白色纸张 */
+            background-color: #e5e7eb;
         }
 
-        /* 纸张容器变更为 Flex 布局，用于排列多张独立页面 */
         #paper-container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 2rem; /* 两张纸之间的视觉间距 */
+            gap: 2rem;
             padding: 2rem 0; 
             width: 100%;
         }
 
-        /* 独立的物理 A4 纸样式 */
         .a4-page {
             width: 210mm;
             height: 297mm;
@@ -50,16 +48,15 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             box-sizing: border-box;
             padding: var(--paper-margin-top) var(--paper-margin-right) var(--paper-margin-bottom) var(--paper-margin-left);
-            overflow: hidden; /* 超出单页内容自动截断（由 JS 负责移交下一页） */
+            overflow: hidden;
             flex-shrink: 0;
             position: relative;
-            page-break-after: always; /* 确保打印时也是一页一页的 */
+            page-break-after: always;
         }
 
-        /* 页面内容区 */
         .page-content {
             width: 100%;
-            height: 100%; /* 自动计算出剥离边距后的实际内容高度 */
+            height: 100%;
             position: relative;
             font-size: var(--paper-font-size);
             line-height: var(--paper-line-height);
@@ -68,10 +65,8 @@
             word-wrap: break-word;
         }
 
-        /* 极致顶部清理：确保每一页的开头绝对顶格 */
         .page-content > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
 
-        /* 内容元素基础样式 */
         .page-content h1 { font-size: 2em; font-weight: bold; margin-bottom: 1em; text-align: center; }
         .page-content h2 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.6em 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
         .page-content p { margin-bottom: 0.8em; text-align: justify; }
@@ -79,7 +74,6 @@
         .page-content li { margin-bottom: 0.3em; }
         .katex-display { margin: 1em 0; }
 
-        /* 打印时去除阴影和间距 */
         @media print {
             body { background: white; }
             #sidebar { display: none !important; }
@@ -151,9 +145,6 @@
 
         editor.value = `# 物理分页预览测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。一旦当前页面的物理空间被填满，系统会自动生成一张带有阴影的全新 A4 纸。\n\n## 智能列表切分\n\n* 项目一：公式测试 $E = mc^2$\n* 项目二：这是长列表测试，当接近页尾时，列表项会被智能打断到下一页。\n* 项目三\n* 项目四\n* 项目五\n* 项目六\n* 项目七\n* 项目八\n\n$$\\int_a^b f(x) dx = F(b) - F(a)$$\n\n正常段落测试。现在导出的 PDF 将会与您在这里看到的排版严丝合缝地对齐。`;
 
-        /**
-         * 动态生成一张新的 A4 纸张 DOM
-         */
         function createNewPage() {
             const paperContainer = document.getElementById('paper-container');
             currentPage = document.createElement('div');
@@ -166,16 +157,11 @@
             paperContainer.appendChild(currentPage);
         }
 
-        /**
-         * 智能装填算法：将节点逐个塞入纸张，超高则开新纸
-         */
         function appendNodeToPages(node) {
             contentArea.appendChild(node);
             
-            // 检查内容是否溢出了当前纸张的安全高度
             if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
                 
-                // 智能处理列表 (UL/OL)：允许在列表项之间断页
                 if ((node.tagName === 'UL' || node.tagName === 'OL') && node.childNodes.length > 1) {
                     contentArea.removeChild(node);
                     
@@ -191,23 +177,19 @@
                             currentList.removeChild(item);
                             if (currentList.childNodes.length === 0) contentArea.removeChild(currentList);
                             
-                            createNewPage(); // 开启新一页
+                            createNewPage();
                             currentList = node.cloneNode(false);
                             contentArea.appendChild(currentList);
                             currentList.appendChild(item);
                         }
                     }
                 } else {
-                    // 普通块级元素
                     if (contentArea.childNodes.length === 1) {
-                        // 只有一个超大元素，允许它溢出被截断，为后续元素开新页
                         createNewPage();
                     } else {
-                        // 将该元素移至下一页
                         contentArea.removeChild(node);
                         createNewPage();
                         contentArea.appendChild(node);
-                        // 如果它在新页依然超高，继续开新页保障后续流程
                         if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
                             createNewPage();
                         }
@@ -216,9 +198,6 @@
             }
         }
 
-        /**
-         * 核心解析与分页调度器
-         */
         function parseAndRender(text) {
             if (typeof katex === 'undefined') return;
             
@@ -239,26 +218,19 @@
                 return katex.renderToString(item.math, { displayMode: item.display, output: 'htmlAndMathml', throwOnError: false });
             });
 
-            // 清空容器，准备排版
             document.getElementById('paper-container').innerHTML = '';
             
-            // 将生成的 HTML 放入隐藏内存块中分解
             const hiddenDiv = document.createElement('div');
             hiddenDiv.innerHTML = html;
             
-            // 初始化第一页
             createNewPage();
             
-            // 逐个节点装填
             const nodes = Array.from(hiddenDiv.childNodes);
             for (let i = 0; i < nodes.length; i++) {
                 appendNodeToPages(nodes[i]);
             }
         }
 
-        /**
-         * 更新样式参数（引入防抖，避免拖动滑块时疯狂重排）
-         */
         function updateStyles() {
             const vals = {
                 fz: document.getElementById('font-size').value,
@@ -281,82 +253,166 @@
 
             printPageStyle.innerHTML = `@media print { @page { size: A4; margin: ${vals.mt}mm ${vals.mr}mm ${vals.mb}mm ${vals.ml}mm !important; } }`;
 
-            // 样式改变会导致容量改变，需要重新计算分页
             clearTimeout(renderTimeout);
             renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
         }
 
-        /**
-         * 导出 Word 适配分页
-         */
-        function exportDOCX() {
-            const mt = document.getElementById('margin-top').value;
-            const mb = document.getElementById('margin-bottom').value;
-            const ml = document.getElementById('margin-left').value;
-            const mr = document.getElementById('margin-right').value;
-            const fz = document.getElementById('font-size').value;
-            const lh = document.getElementById('line-height').value;
+        async function exportDOCX() {
+            const exportBtn = document.querySelector('button[onclick="exportDOCX()"]');
+            const originalText = exportBtn ? exportBtn.innerHTML : '';
+            if (exportBtn) { exportBtn.disabled = true; exportBtn.innerHTML = '生成中...'; }
 
-            // 创建临时容器合并所有分页内容
-            const tempDiv = document.createElement('div');
-            document.querySelectorAll('.page-content').forEach(page => {
-                Array.from(page.childNodes).forEach(node => {
-                    tempDiv.appendChild(node.cloneNode(true));
+            try {
+                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, convertMillimetersToTwip } = window.docx;
+
+                const mt  = parseFloat(document.getElementById('margin-top').value)    || 25;
+                const mb  = parseFloat(document.getElementById('margin-bottom').value)  || 25;
+                const ml  = parseFloat(document.getElementById('margin-left').value)    || 20;
+                const mr  = parseFloat(document.getElementById('margin-right').value)   || 20;
+                const fz  = parseFloat(document.getElementById('font-size').value)      || 16;
+                const lhV = parseFloat(document.getElementById('line-height').value)    || 1.8;
+
+                const hp = val => Math.round(val / 1.333 * 2);
+                const spacingAfter = Math.round(fz * lhV * 15);
+
+                async function elementToImageRun(el) {
+                    const canvas = await html2canvas(el, { scale: 3, backgroundColor: null, logging: false, useCORS: true });
+                    const w = el.offsetWidth  || canvas.width  / 3;
+                    const h = el.offsetHeight || canvas.height / 3;
+                    const maxW = 450;
+                    const dispW = Math.min(w, maxW);
+                    const dispH = Math.round(h * dispW / Math.max(w, 1));
+                    const b64 = canvas.toDataURL('image/png').split(',')[1];
+                    const bin = atob(b64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    return new ImageRun({ data: bytes.buffer, transformation: { width: dispW, height: dispH } });
+                }
+
+                async function toRuns(el, bold = false, italic = false) {
+                    const runs = [];
+                    for (const child of el.childNodes) {
+                        if (child.nodeType === Node.TEXT_NODE) {
+                            if (child.textContent) {
+                                runs.push(new TextRun({ text: child.textContent, bold, italics: italic, size: hp(fz), font: 'Times New Roman' }));
+                            }
+                        } else if (child.nodeType === Node.ELEMENT_NODE) {
+                            const t  = child.tagName.toLowerCase();
+                            const cl = child.classList;
+                            if (cl.contains('katex-html') || cl.contains('katex-mathml')) continue;
+                            if (cl.contains('katex')) {
+                                runs.push(await elementToImageRun(child));
+                                continue;
+                            }
+                            const b2 = bold   || t === 'strong' || t === 'b';
+                            const i2 = italic || t === 'em'     || t === 'i' || t === 'cite';
+                            runs.push(...(await toRuns(child, b2, i2)));
+                        }
+                    }
+                    return runs;
+                }
+
+                const allNodes = [];
+                document.querySelectorAll('.page-content').forEach(pg => {
+                    for (const n of pg.childNodes) allNodes.push(n);
                 });
-            });
-            
-            tempDiv.querySelectorAll('.katex-html').forEach(el => el.remove());
-            tempDiv.querySelectorAll('.katex-display').forEach(el => {
-                el.style.textAlign = "center";
-                el.style.margin = "12pt 0";
-            });
 
-            const content = tempDiv.innerHTML;
+                const children = [];
 
-            const html = `
-                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                <head>
-                    <meta charset='utf-8'>
-                    <!--[if gte mso 9]>
-                    <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml>
-                    <![endif]-->
-                    <style>
-                        @page Section1 { size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0; }
-                        div.Section1 { page: Section1; }
-                        body { font-family: 'Times New Roman', serif; font-size: ${fz}px; line-height: ${lh}; }
-                        h1 { font-size: 24pt; text-align: center; margin: 0 0 12pt 0; }
-                        h2 { font-size: 18pt; margin: 12pt 0 6pt 0; border-bottom: 1px solid #ccc; }
-                        p { margin: 0 0 8pt 0; text-align: justify; }
-                        ul { margin: 0 0 10pt 20pt; }
-                        li { mso-special-format: bullet; }
-                    </style>
-                </head>
-                <body><div class="Section1">${content}</div></body>
-                </html>
-            `;
+                for (const node of allNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    const tag = node.tagName.toLowerCase();
+                    const cl  = node.classList;
 
-            const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = '排版文档.doc'; 
-            a.click();
+                    if (cl.contains('katex-display')) {
+                        const inner = node.querySelector('.katex') || node;
+                        children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 }, children: [await elementToImageRun(inner)] }));
+                        continue;
+                    }
+
+                    if (tag === 'p') {
+                        const dispMath = node.querySelector('.katex-display');
+                        if (dispMath) {
+                            const inner = dispMath.querySelector('.katex') || dispMath;
+                            children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 }, children: [await elementToImageRun(inner)] }));
+                            continue;
+                        }
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ alignment: AlignmentType.BOTH, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun({ text: node.textContent, size: hp(fz) })] }));
+                        continue;
+                    }
+
+                    if (tag === 'h1') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                    } else if (tag === 'h2') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                    } else if (tag === 'h3') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: runs.length ? runs : [new TextRun(node.textContent)] }));
+                    } else if (tag === 'ul') {
+                        for (const li of node.querySelectorAll(':scope > li')) {
+                            const runs = await toRuns(li);
+                            children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun({ text: li.textContent, size: hp(fz) })] }));
+                        }
+                    } else if (tag === 'ol') {
+                        for (const li of node.querySelectorAll(':scope > li')) {
+                            const runs = await toRuns(li);
+                            children.push(new Paragraph({ numbering: { reference: 'ol-ref', level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun({ text: li.textContent, size: hp(fz) })] }));
+                        }
+                    } else if (tag === 'blockquote') {
+                        children.push(new Paragraph({ indent: { left: convertMillimetersToTwip(10) }, children: [new TextRun({ text: node.textContent.trim(), italics: true, size: hp(fz) })] }));
+                    } else if (tag === 'hr') {
+                        children.push(new Paragraph({ border: { bottom: { style: 'single', size: 6, space: 1, color: 'AAAAAA' } }, children: [new TextRun('')] }));
+                    }
+                }
+
+                if (!children.length) children.push(new Paragraph({ children: [new TextRun('')] }));
+
+                const doc = new Document({
+                    numbering: {
+                        config: [{
+                            reference: 'ol-ref',
+                            levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.LEFT,
+                                style: { paragraph: { indent: { left: convertMillimetersToTwip(12), hanging: convertMillimetersToTwip(6) } } } }]
+                        }]
+                    },
+                    sections: [{
+                        properties: {
+                            page: {
+                                size: { width: convertMillimetersToTwip(210), height: convertMillimetersToTwip(297) },
+                                margin: { top: convertMillimetersToTwip(mt), right: convertMillimetersToTwip(mr), bottom: convertMillimetersToTwip(mb), left: convertMillimetersToTwip(ml) }
+                            }
+                        },
+                        children
+                    }]
+                });
+
+                const blob = await Packer.toBlob(doc);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = '排版文档.docx';
+                a.click();
+
+            } catch (err) {
+                console.error('DOCX导出错误:', err);
+                alert('生成 Word 文档失败：' + err.message);
+            } finally {
+                if (exportBtn) { exportBtn.innerHTML = originalText; exportBtn.disabled = false; }
+            }
         }
 
-        /**
-         * 导出 PDF：逐页 1:1 截取渲染，保证与预览绝对一致，并直接下载
-         */
         async function exportPDF() {
             const btn = document.getElementById('export-btn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
 
             try {
-                // 等待最新的 DOM 更新稳定
                 await new Promise(r => setTimeout(r, 100));
                 
                 const pages = document.querySelectorAll('.a4-page');
                 const { jsPDF } = window.jspdf;
-                // 'p' 纵向, 'mm' 单位, 'a4' 纸张标准尺寸
                 const pdf = new jsPDF('p', 'mm', 'a4');
 
                 for (let i = 0; i < pages.length; i++) {
@@ -364,11 +420,9 @@
                     
                     btn.innerHTML = `处理中 ${i + 1}/${pages.length}...`;
                     
-                    // 暂时移除阴影以保证截图纯净
                     const oldShadow = page.style.boxShadow;
                     page.style.boxShadow = 'none';
                     
-                    // 强制采用 3 倍超高分辨率进行无损采样
                     const canvas = await html2canvas(page, { 
                         scale: 3, 
                         useCORS: true,
@@ -379,16 +433,13 @@
                     
                     const imgData = canvas.toDataURL('image/jpeg', 0.98);
                     
-                    // 除了第一页，之后的都要 addPage
                     if (i > 0) {
                         pdf.addPage();
                     }
                     
-                    // 将高清图强行压入严格的 210x297 mm 的 PDF 页面中
                     pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
                 }
 
-                // 直接触发文件下载行为
                 pdf.save('排版文档.pdf');
                 
             } catch (error) {
@@ -409,7 +460,6 @@
             a.click();
         }
 
-        // 绑定带防抖的输入事件
         editor.addEventListener('input', () => {
             clearTimeout(renderTimeout);
             renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);

@@ -202,7 +202,12 @@
         function parseAndRender(text) {
             if (typeof katex === 'undefined') return;
             
-            let cleanText = text.replace(/^\s*\*\s+/gm, '* ');
+            // 修复1：将中文全角星号替换为英文星号
+            let cleanText = text.replace(/＊/g, '*');
+            
+            // 修复2：如果用户输入星号后忘记加空格(导致被识别为普通文本出现"Markdown点"残留)，这里自动容错补齐空格，并保留前置缩进以支持多级列表
+            cleanText = cleanText.replace(/^(\s*)([\*\-])([^\s\*\-])/gm, '$1$2 $3');
+
             const mathBlocks = [];
             let processedText = cleanText.replace(/\$\$(.*?)\$\$/gs, (m, p1) => {
                 mathBlocks.push({ math: p1, display: true });
@@ -276,6 +281,24 @@
                 });
             });
             
+            // 修复3：清理空列表
+            tempDiv.querySelectorAll('ul, ol').forEach(list => {
+                if (list.children.length === 0) list.remove();
+            });
+
+            // 修复4：合并因分页而导致的 DOM 碎片（把拆散的同一个列表重新缝合，防止 Word 里断层）
+            const childNodes = Array.from(tempDiv.childNodes);
+            for (let i = childNodes.length - 1; i > 0; i--) {
+                const current = childNodes[i];
+                const prev = childNodes[i - 1];
+                if (current.tagName && prev.tagName && current.tagName === prev.tagName && (current.tagName === 'UL' || current.tagName === 'OL')) {
+                    while (current.firstChild) {
+                        prev.appendChild(current.firstChild);
+                    }
+                    current.remove();
+                }
+            }
+            
             tempDiv.querySelectorAll('.katex-html').forEach(el => el.remove());
             tempDiv.querySelectorAll('.katex-display').forEach(el => {
                 el.style.textAlign = "center";
@@ -284,6 +307,7 @@
 
             const content = tempDiv.innerHTML;
 
+            // 修复5：去除 mso-special-format 属性，完全依靠 Word 自身去识别标准 ul/li，杜绝假圆点
             const html = `
                 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
                 <head>
@@ -296,8 +320,8 @@
                         h1 { font-size: 24pt; text-align: center; margin: 0 0 12pt 0; }
                         h2 { font-size: 18pt; margin: 12pt 0 6pt 0; border-bottom: 1px solid #ccc; }
                         p { margin: 0 0 8pt 0; text-align: justify; }
-                        ul { margin: 0 0 10pt 20pt; }
-                        li { mso-special-format: bullet; }
+                        ul, ol { margin: 0 0 10pt 20pt; padding-left: 0; }
+                        li { margin-bottom: 4pt; }
                     </style>
                 </head>
                 <body><div class="Section1">${content}</div></body>
@@ -325,7 +349,6 @@
                     throw new Error("docx 库未加载成功，请检查网络或刷新页面。");
                 }
 
-                // 移除原有的 convertMillimetersToTwip 解构，因为 7.x 版本不一定导出该工具函数
                 const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, BorderStyle } = window.docx;
 
                 // 手动实现精确的毫米到 Twip 的转换公式 (1 mm ≈ 56.692913 twips)

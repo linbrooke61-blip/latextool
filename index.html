@@ -213,9 +213,9 @@
             cleanText = cleanText.replace(/【site.*?】/gi, '');
             cleanText = cleanText.replace(/\[site.*?\]/gi, '');
 
-            // 新增：精准处理 Gemini 特有的引用标签 和
+            // 新增：精准处理 Gemini 特有的引用标签，修正了上一版的正则语法错误
             cleanText = cleanText.replace(/\[cite_start\]/gi, ''); // 无痕移除起始标签
-            cleanText = cleanText.replace(/\]+)\]/gi, '[$1]'); // 将 提取为标准的学术引用格式 [164, 165]
+            cleanText = cleanText.replace(/\]+)\]/gi, '[$1]'); // 将引用提取为标准的学术格式 [164, 165]
 
             const mathBlocks = [];
             let processedText = cleanText.replace(/\$\$(.*?)\$\$/gs, (m, p1) => {

@@ -149,7 +149,7 @@
 
         marked.setOptions({ breaks: true, gfm: true });
 
-        editor.value = `# 文献综述排版测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。\n\n### 1. Basic Information\n* **Title:** Emotion as a Skill\n* **Authors:** Jinhui Lai, Yuan Wang\n\n### 2. Abstract: A Brief Overview\nThis qualitative study investigates how social workers perceive and utilize emotional skills...\n\n### 3. Background and Research Gap\n* **Background:**\n  * Social workers operate in emotionally charged environments...\n  * This exposes them to significant **emotional risks**...\n* **Research Gap:**\n  * While "emotional skills" are recognized...\n\n$$\\int_a^b f(x) dx = F(b) - F(a)$$\n\n正常段落测试。现在的 Word 导出将完美呈现多级列表、字体层级以及精准的行距。`;
+        editor.value = `# 文献综述排版测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。\n\n### 1. Basic Information\n* **Title:** Emotion as a Skill 【site1】\n* **Authors:** Jinhui Lai, Yuan Wang [site2]\n\n### 2. Abstract: A Brief Overview\nThis qualitative study investigates how social workers perceive and utilize emotional skills...\n\n### 3. Background and Research Gap\n* **Background:**\n  * Social workers operate in emotionally charged environments...\n  * This exposes them to significant **emotional risks**...\n* **Research Gap:**\n  * While "emotional skills" are recognized...\n\n$$\\int_a^b f(x) dx = F(b) - F(a)$$\n\n正常段落测试。现在的 Word 导出将完美呈现多级列表、字体层级以及精准的行距。`;
 
         function createNewPage() {
             const paperContainer = document.getElementById('paper-container');
@@ -208,6 +208,10 @@
             
             let cleanText = text.replace(/＊/g, '*');
             cleanText = cleanText.replace(/^(\s*)([\*\-])([^\s\*\-])/gm, '$1$2 $3');
+
+            // 核心新增：自动剔除 【sitexxx】 和 [sitexxx] 格式的 AI 引用标记
+            cleanText = cleanText.replace(/【site.*?】/gi, '');
+            cleanText = cleanText.replace(/\[site.*?\]/gi, '');
 
             const mathBlocks = [];
             let processedText = cleanText.replace(/\$\$(.*?)\$\$/gs, (m, p1) => {

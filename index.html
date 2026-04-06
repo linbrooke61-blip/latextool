@@ -1,207 +1,585 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>Markdown 排版工具 Ultimate</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown排版工具1.0</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- KaTeX -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 引入 jsPDF 和 html2canvas 实现精准的逐页所见即所得导出 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- docx.js: 降级到稳定版 7.8.2 -->
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<style>
-body { margin:0; }
-
-.page {
-    width:210mm;
-    height:297mm;
-    margin:20px auto;
-    background:white;
-    padding:20mm;
-    position:relative;
-    box-shadow:0 5px 15px rgba(0,0,0,0.1);
-}
-
-.content {
-    font-size:16px;
-    line-height:1.8;
-}
-
-.page-number {
-    position:absolute;
-    bottom:10mm;
-    right:15mm;
-    font-size:12px;
-}
-
-h1 { text-align:center; }
-h2 { border-bottom:1px solid #ddd; padding-bottom:4px; }
-
-</style>
-</head>
-
-<body class="flex h-screen">
-
-<!-- Sidebar -->
-<div class="w-80 border-r p-3 flex flex-col gap-2">
-<textarea id="editor" class="flex-1 border p-2 text-xs font-mono"></textarea>
-
-<button onclick="render()" class="bg-blue-500 text-white p-2">渲染</button>
-<button onclick="exportPDF()" class="bg-green-600 text-white p-2">导出PDF</button>
-</div>
-
-<!-- Preview -->
-<div id="preview" class="flex-1 overflow-auto bg-gray-200"></div>
-
-<script>
-const editor = document.getElementById("editor");
-
-editor.value = `# 标题
-
-## 第一章
-这是正文。
-
-$$E=mc^2$$
-
-## 第二章
-内容继续。
-
-- 列表1
-- 列表2
-`;
-
-function parse(md){
-    let math = [];
-
-    md = md.replace(/\$\$(.*?)\$\$/gs,(m,p)=>{
-        math.push({t:p,b:true});
-        return `@@${math.length-1}@@`;
-    });
-
-    md = md.replace(/\$(.*?)\$/g,(m,p)=>{
-        math.push({t:p,b:false});
-        return `@@${math.length-1}@@`;
-    });
-
-    let html = marked.parse(md);
-
-    html = html.replace(/@@(\d+)@@/g,(m,i)=>{
-        let item = math[i];
-        return katex.renderToString(item.t,{
-            displayMode:item.b,
-            throwOnError:false,
-            trust:false
-        });
-    });
-
-    return html;
-}
-
-// 🔥 目录生成
-function generateTOC(container){
-    let toc = document.createElement("div");
-    toc.innerHTML = "<h2>目录</h2>";
-
-    container.querySelectorAll("h2").forEach((h,i)=>{
-        h.id = "sec_"+i;
-
-        let a = document.createElement("div");
-        a.innerHTML = `<a href="#${h.id}">${h.innerText}</a>`;
-        toc.appendChild(a);
-    });
-
-    return toc;
-}
-
-// 🔥 分页引擎（改进版）
-function paginate(nodes){
-    let pages = [];
-    let page = createPage();
-    let content = page.querySelector(".content");
-
-    nodes.forEach(node=>{
-        content.appendChild(node);
-
-        if(content.scrollHeight > content.clientHeight){
-            content.removeChild(node);
-
-            pages.push(page);
-            page = createPage();
-            content = page.querySelector(".content");
-
-            content.appendChild(node);
+    <style>
+        :root {
+            --paper-font-size: 16px;
+            --paper-line-height: 1.8;
+            --paper-font-family: 'Times New Roman', 'Source Han Sans CN', serif;
+            --paper-margin-top: 25mm;
+            --paper-margin-bottom: 25mm;
+            --paper-margin-left: 20mm;
+            --paper-margin-right: 20mm;
         }
-    });
 
-    pages.push(page);
-    return pages;
-}
+        #preview-wrapper {
+            background-color: #e5e7eb;
+        }
 
-function createPage(){
-    let p = document.createElement("div");
-    p.className = "page";
+        #paper-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            padding: 2rem 0; 
+            width: 100%;
+        }
 
-    let c = document.createElement("div");
-    c.className = "content";
+        .a4-page {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+            padding: var(--paper-margin-top) var(--paper-margin-right) var(--paper-margin-bottom) var(--paper-margin-left);
+            overflow: hidden;
+            flex-shrink: 0;
+            position: relative;
+            page-break-after: always;
+        }
 
-    p.appendChild(c);
-    return p;
-}
+        .page-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            font-size: var(--paper-font-size);
+            line-height: var(--paper-line-height);
+            font-family: var(--paper-font-family);
+            color: #1a1a1a;
+            word-wrap: break-word;
+        }
 
-function render(){
-    const preview = document.getElementById("preview");
-    preview.innerHTML = "";
+        .page-content > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
 
-    let html = parse(editor.value);
+        .page-content h1 { font-size: 2em; font-weight: bold; margin-bottom: 1em; text-align: center; }
+        .page-content h2 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.6em 0; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .page-content h3 { font-size: 1.25em; font-weight: bold; margin: 1em 0 0.5em 0; }
+        .page-content h4 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.4em 0; }
+        /* 修复：取消 justify 两端对齐，改用 left 左对齐，防止出现巨大单词间距 */
+        .page-content p { margin-bottom: 0.8em; text-align: left; }
+        .page-content ul, .page-content ol { margin-bottom: 1em; padding-left: 2em; }
+        .page-content li { margin-bottom: 0.3em; text-align: left; }
+        .page-content hr { margin: 1.5em 0; border: none; border-top: 1px solid #e5e7eb; }
+        .katex-display { margin: 1em 0; }
 
-    let temp = document.createElement("div");
-    temp.innerHTML = html;
+        @media print {
+            body { background: white; }
+            #sidebar { display: none !important; }
+            #preview-wrapper { margin: 0 !important; padding: 0 !important; background-color: white; }
+            #paper-container { gap: 0; padding: 0; }
+            .a4-page { box-shadow: none; margin: 0; border: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex h-screen overflow-hidden text-sm">
 
-    // 插入目录
-    let toc = generateTOC(temp);
-    temp.insertBefore(toc, temp.firstChild);
+    <aside id="sidebar" class="w-96 bg-white shadow-xl flex flex-col z-10 border-r h-full shrink-0">
+        <div class="p-4 border-b bg-slate-50 flex flex-col gap-3">
+            <h2 class="text-lg font-bold text-slate-800">Markdown排版工具1.0</h2>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="downloadHtml()" class="bg-slate-500 hover:bg-slate-600 text-white px-2 py-1.5 rounded text-[11px] transition">本地版</button>
+                <button onclick="exportWordNative()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold shadow-md" title="推荐：保留公式的Word原生编辑能力">导出 Word (原生公式)</button>
+                <button onclick="exportDOCXImage()" class="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold shadow-md" title="使用 docx.js，公式将被转换为不可编辑的图片">导出 DOCX (图片公式)</button>
+                <button id="export-btn" onclick="exportPDF()" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 rounded text-[11px] transition font-bold">导出 PDF</button>
+            </div>
+        </div>
 
-    let nodes = Array.from(temp.children);
+        <div class="flex-1 overflow-y-auto p-5 space-y-6">
+            <div class="space-y-2">
+                <label class="font-bold text-gray-700">内容输入</label>
+                <textarea id="editor" class="w-full h-80 p-3 border rounded font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none" placeholder="输入 Markdown..."></textarea>
+            </div>
 
-    let pages = paginate(nodes);
+            <div class="space-y-4">
+                <h3 class="font-bold text-gray-700 text-xs uppercase">排版微调</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[11px] text-gray-500">字号: <span id="font-size-val">16px</span></label>
+                        <input type="range" id="font-size" min="12" max="24" value="16" class="w-full h-1" oninput="updateStyles()">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-gray-500">行距: <span id="line-height-val">1.8</span></label>
+                        <input type="range" id="line-height" min="1" max="2.5" step="0.1" value="1.8" class="w-full h-1" oninput="updateStyles()">
+                    </div>
+                </div>
 
-    pages.forEach((p,i)=>{
-        let num = document.createElement("div");
-        num.className = "page-number";
-        num.innerText = i+1;
-        p.appendChild(num);
+                <div class="bg-slate-50 p-3 rounded border border-slate-100 space-y-3">
+                    <p class="text-[10px] font-bold text-slate-400">页边距控制 (mm)</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="text-[9px]">上</label><input type="number" id="margin-top" value="25" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">下</label><input type="number" id="margin-bottom" value="25" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">左</label><input type="number" id="margin-left" value="20" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                        <div><label class="text-[9px]">右</label><input type="number" id="margin-right" value="20" class="w-full border p-1 rounded" oninput="updateStyles()"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
 
-        preview.appendChild(p);
-    });
-}
+    <main id="preview-wrapper" class="flex-1 overflow-y-auto relative">
+        <div id="paper-container"></div>
+    </main>
 
-// PDF
-async function exportPDF(){
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p','mm','a4');
+    <style id="print-page-style"></style>
 
-    const pages = document.querySelectorAll('.page');
+    <script>
+        const editor = document.getElementById('editor');
+        const printPageStyle = document.getElementById('print-page-style');
+        
+        let currentPage, contentArea;
+        let renderTimeout;
 
-    for(let i=0;i<pages.length;i++){
-        let canvas = await html2canvas(pages[i],{
-            scale: window.devicePixelRatio * 2
+        marked.setOptions({ breaks: true, gfm: true });
+
+        editor.value = `# 文献综述排版测试\n\n你可以尝试不断向下输入内容，或者调整左侧的字号和行距。\n\n### 1. Basic Information\n* **Title:** Emotion as a Skill 【site1】\n* **Authors:** Jinhui Lai, Yuan Wang [site2]\n\n### 2. Abstract: A Brief Overview\nThis qualitative study investigates how social workers perceive and utilize emotional skills...\n\n### 3. Background and Research Gap\n* **Background:**\n  * Social workers operate in emotionally charged environments...\n  * This exposes them to significant **emotional risks**...\n* **Research Gap:**\n  * While "emotional skills" are recognized...\n\n$$\\int_a^b f(x) dx = F(b) - F(a)$$\n\n正常段落测试。现在的 Word 导出将完美呈现多级列表、字体层级以及精准的行距。`;
+
+        function createNewPage() {
+            const paperContainer = document.getElementById('paper-container');
+            currentPage = document.createElement('div');
+            currentPage.className = 'a4-page';
+            
+            contentArea = document.createElement('div');
+            contentArea.className = 'page-content';
+            currentPage.appendChild(contentArea);
+            
+            paperContainer.appendChild(currentPage);
+        }
+
+        function appendNodeToPages(node) {
+            contentArea.appendChild(node);
+            
+            if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                if ((node.tagName === 'UL' || node.tagName === 'OL') && node.childNodes.length > 1) {
+                    contentArea.removeChild(node);
+                    
+                    let currentList = node.cloneNode(false);
+                    contentArea.appendChild(currentList);
+                    
+                    const items = Array.from(node.childNodes);
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        currentList.appendChild(item);
+                        
+                        if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                            currentList.removeChild(item);
+                            if (currentList.childNodes.length === 0) contentArea.removeChild(currentList);
+                            
+                            createNewPage();
+                            currentList = node.cloneNode(false);
+                            contentArea.appendChild(currentList);
+                            currentList.appendChild(item);
+                        }
+                    }
+                } else {
+                    if (contentArea.childNodes.length === 1) {
+                        createNewPage();
+                    } else {
+                        contentArea.removeChild(node);
+                        createNewPage();
+                        contentArea.appendChild(node);
+                        if (Math.ceil(contentArea.scrollHeight) > Math.ceil(contentArea.clientHeight) + 1) {
+                            createNewPage();
+                        }
+                    }
+                }
+            }
+        }
+
+        function parseAndRender(text) {
+            if (typeof katex === 'undefined') return;
+            
+            let cleanText = text.replace(/＊/g, '*');
+            cleanText = cleanText.replace(/^(\s*)([\*\-])([^\s\*\-])/gm, '$1$2 $3');
+
+            // 核心新增：自动剔除 【sitexxx】 和 [sitexxx] 格式的 AI 引用标记
+            cleanText = cleanText.replace(/【site.*?】/gi, '');
+            cleanText = cleanText.replace(/\[site.*?\]/gi, '');
+
+            // 新增：精准处理 Gemini 特有的引用标签，修正了上一版的正则语法错误
+            cleanText = cleanText.replace(/\[cite_start\]/gi, ''); // 无痕移除起始标签
+            // 彻底修复：使用合法的正则表达式匹配 Gemini 的 标签
+            cleanText = cleanText.replace(/\]+)\]/gi, '[$1]'); // 将引用提取为标准的学术格式 [164, 165]
+
+            const mathBlocks = [];
+            let processedText = cleanText.replace(/\$\$(.*?)\$\$/gs, (m, p1) => {
+                mathBlocks.push({ math: p1, display: true });
+                return `%%%MATH_${mathBlocks.length - 1}%%%`;
+            });
+            processedText = processedText.replace(/(?<!\\)\$(.+?)(?<!\\)\$/g, (m, p1) => {
+                mathBlocks.push({ math: p1, display: false });
+                return `%%%MATH_${mathBlocks.length - 1}%%%`;
+            });
+
+            let html = marked.parse(processedText);
+            html = html.replace(/%%%MATH_(\d+)%%%/g, (m, i) => {
+                const item = mathBlocks[i];
+                return katex.renderToString(item.math, { displayMode: item.display, output: 'htmlAndMathml', throwOnError: false });
+            });
+
+            document.getElementById('paper-container').innerHTML = '';
+            
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = html;
+            
+            createNewPage();
+            
+            const nodes = Array.from(hiddenDiv.childNodes);
+            for (let i = 0; i < nodes.length; i++) {
+                appendNodeToPages(nodes[i]);
+            }
+        }
+
+        function updateStyles() {
+            const vals = {
+                fz: document.getElementById('font-size').value,
+                lh: document.getElementById('line-height').value,
+                mt: document.getElementById('margin-top').value,
+                mb: document.getElementById('margin-bottom').value,
+                ml: document.getElementById('margin-left').value,
+                mr: document.getElementById('margin-right').value
+            };
+
+            document.getElementById('font-size-val').innerText = vals.fz + 'px';
+            document.getElementById('line-height-val').innerText = vals.lh;
+
+            document.documentElement.style.setProperty('--paper-font-size', `${vals.fz}px`);
+            document.documentElement.style.setProperty('--paper-line-height', vals.lh);
+            document.documentElement.style.setProperty('--paper-margin-top', `${vals.mt}mm`);
+            document.documentElement.style.setProperty('--paper-margin-bottom', `${vals.mb}mm`);
+            document.documentElement.style.setProperty('--paper-margin-left', `${vals.ml}mm`);
+            document.documentElement.style.setProperty('--paper-margin-right', `${vals.mr}mm`);
+
+            printPageStyle.innerHTML = `@media print { @page { size: A4; margin: ${vals.mt}mm ${vals.mr}mm ${vals.mb}mm ${vals.ml}mm !important; } }`;
+
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
+        }
+
+        function exportWordNative() {
+            const mt = document.getElementById('margin-top').value;
+            const mb = document.getElementById('margin-bottom').value;
+            const ml = document.getElementById('margin-left').value;
+            const mr = document.getElementById('margin-right').value;
+            
+            const fzPx = parseFloat(document.getElementById('font-size').value);
+            const ptSize = Math.round(fzPx * 0.75);
+            
+            const lhVal = parseFloat(document.getElementById('line-height').value);
+            const lhPercent = Math.round(lhVal * 100);
+
+            const tempDiv = document.createElement('div');
+            document.querySelectorAll('.page-content').forEach(page => {
+                Array.from(page.childNodes).forEach(node => {
+                    tempDiv.appendChild(node.cloneNode(true));
+                });
+            });
+            
+            tempDiv.querySelectorAll('ul, ol').forEach(list => {
+                if (list.children.length === 0) list.remove();
+            });
+
+            const childNodes = Array.from(tempDiv.childNodes);
+            for (let i = childNodes.length - 1; i > 0; i--) {
+                const current = childNodes[i];
+                const prev = childNodes[i - 1];
+                if (current.tagName && prev.tagName && current.tagName === prev.tagName && (current.tagName === 'UL' || current.tagName === 'OL')) {
+                    while (current.firstChild) {
+                        prev.appendChild(current.firstChild);
+                    }
+                    current.remove();
+                }
+            }
+            
+            tempDiv.querySelectorAll('.katex-html').forEach(el => el.remove());
+            tempDiv.querySelectorAll('.katex-display').forEach(el => {
+                el.style.textAlign = "center";
+                el.style.margin = "12pt 0";
+            });
+
+            const content = tempDiv.innerHTML;
+
+            const html = `
+                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
+                    <style>
+                        @page Section1 { size: 595.3pt 841.9pt; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; mso-header-margin: 36pt; mso-footer-margin: 36pt; mso-paper-source: 0; }
+                        div.Section1 { page: Section1; }
+                        
+                        /* 修复：强制要求 Word 中所有的内联、块级元素完全继承指定字体，防止加粗等标签突变为 Calibri */
+                        body, p, h1, h2, h3, h4, h5, h6, ul, ol, li, div, span, strong, em, b, i, a {
+                            font-family: 'Times New Roman', 'SimSun', serif !important;
+                        }
+                        
+                        body { font-size: ${ptSize}pt; line-height: ${lhPercent}%; color: #000000; }
+                        h1 { font-size: ${ptSize + 8}pt; font-weight: bold; text-align: center; margin: 16pt 0 12pt 0; color: #000000; }
+                        h2 { font-size: ${ptSize + 4}pt; font-weight: bold; margin: 14pt 0 8pt 0; border-bottom: 1px solid #ccc; padding-bottom: 4pt; color: #000000; }
+                        h3 { font-size: ${ptSize + 2}pt; font-weight: bold; margin: 12pt 0 6pt 0; color: #000000; }
+                        h4 { font-size: ${ptSize + 1}pt; font-weight: bold; margin: 10pt 0 6pt 0; color: #000000; }
+                        h5, h6 { font-size: ${ptSize}pt; font-weight: bold; margin: 8pt 0 4pt 0; color: #000000; }
+                        
+                        /* 修复：取消 text-align: justify 改为 left，消除大片空白和单词间隙过大的问题 */
+                        p { margin: 0 0 8pt 0; text-align: left; line-height: ${lhPercent}%; }
+                        ul, ol { margin: 0 0 10pt 24pt; }
+                        li { margin-bottom: 4pt; line-height: ${lhPercent}%; text-align: left; }
+                        hr { height: 1px; border: none; border-top: 1px solid #000000; margin: 12pt 0; }
+                    </style>
+                </head>
+                <body><div class="Section1">${content}</div></body>
+                </html>
+            `;
+
+            const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '排版文档_原生公式版.doc'; 
+            a.click();
+        }
+
+        async function exportDOCXImage() {
+            const exportBtn = document.querySelector('button[onclick="exportDOCXImage()"]');
+            const originalText = exportBtn ? exportBtn.innerHTML : '';
+            if (exportBtn) { exportBtn.disabled = true; exportBtn.innerHTML = '生成中...'; }
+
+            try {
+                if (typeof window.docx === 'undefined') {
+                    throw new Error("docx 库未加载成功，请检查网络或刷新页面。");
+                }
+
+                const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, BorderStyle } = window.docx;
+
+                const mmToTwip = mm => Math.round(mm * 56.692913);
+
+                const mt  = parseFloat(document.getElementById('margin-top').value)    || 25;
+                const mb  = parseFloat(document.getElementById('margin-bottom').value)  || 25;
+                const ml  = parseFloat(document.getElementById('margin-left').value)    || 20;
+                const mr  = parseFloat(document.getElementById('margin-right').value)   || 20;
+                const fz  = parseFloat(document.getElementById('font-size').value)      || 16;
+                const lhV = parseFloat(document.getElementById('line-height').value)    || 1.8;
+
+                const hp = val => Math.round(val / 1.333 * 2);
+                const spacingAfter = Math.round(fz * lhV * 15);
+
+                async function elementToImageRun(el) {
+                    try {
+                        const canvas = await html2canvas(el, { scale: 3, backgroundColor: null, logging: false, useCORS: true });
+                        const w = el.offsetWidth  || canvas.width  / 3;
+                        const h = el.offsetHeight || canvas.height / 3;
+                        const maxW = 450;
+                        const dispW = Math.max(Math.min(w, maxW), 10);
+                        const dispH = Math.max(Math.round(h * dispW / Math.max(w, 1)), 10);
+                        
+                        const b64 = canvas.toDataURL('image/png').split(',')[1];
+                        if(!b64) throw new Error("Empty Canvas");
+                        
+                        const bin = atob(b64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        return new ImageRun({ data: bytes.buffer, transformation: { width: dispW, height: dispH } });
+                    } catch (e) {
+                        return new TextRun({ text: "[公式图片]", italics: true, color: "FF0000" });
+                    }
+                }
+
+                async function toRuns(el, bold = false, italic = false) {
+                    const runs = [];
+                    for (const child of el.childNodes) {
+                        if (child.nodeType === Node.TEXT_NODE) {
+                            if (child.textContent.trim() || child.textContent.includes(' ')) {
+                                runs.push(new TextRun({ text: child.textContent, bold, italics: italic, size: hp(fz), font: 'Times New Roman' }));
+                            }
+                        } else if (child.nodeType === Node.ELEMENT_NODE) {
+                            const t  = child.tagName.toLowerCase();
+                            const cl = child.classList;
+                            if (cl.contains('katex-html') || cl.contains('katex-mathml')) continue;
+                            if (cl.contains('katex')) {
+                                runs.push(await elementToImageRun(child));
+                                continue;
+                            }
+                            const b2 = bold   || t === 'strong' || t === 'b';
+                            const i2 = italic || t === 'em'     || t === 'i' || t === 'cite';
+                            runs.push(...(await toRuns(child, b2, i2)));
+                        }
+                    }
+                    return runs;
+                }
+
+                const allNodes = [];
+                document.querySelectorAll('.page-content').forEach(pg => {
+                    for (const n of pg.childNodes) allNodes.push(n);
+                });
+
+                const children = [];
+                // 修复：DOCX 图片导出同样弃用两端对齐，统一改为左对齐
+                const alignLeft = AlignmentType.LEFT || "left";
+
+                for (const node of allNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    const tag = node.tagName.toLowerCase();
+                    const cl  = node.classList;
+
+                    if (cl.contains('katex-display')) {
+                        const inner = node.querySelector('.katex') || node;
+                        children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 }, children: [await elementToImageRun(inner)] }));
+                        continue;
+                    }
+
+                    if (tag === 'p') {
+                        const dispMath = node.querySelector('.katex-display');
+                        if (dispMath) {
+                            const inner = dispMath.querySelector('.katex') || dispMath;
+                            children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 }, children: [await elementToImageRun(inner)] }));
+                            continue;
+                        }
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ alignment: alignLeft, spacing: { after: spacingAfter }, children: runs.length ? runs : [new TextRun('')] }));
+                        continue;
+                    }
+
+                    if (tag === 'h1') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: runs.length ? runs : [new TextRun('')] }));
+                    } else if (tag === 'h2') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: runs.length ? runs : [new TextRun('')] }));
+                    } else if (tag === 'h3') {
+                        const runs = await toRuns(node);
+                        children.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: runs.length ? runs : [new TextRun('')] }));
+                    } else if (tag === 'ul') {
+                        for (const li of node.querySelectorAll(':scope > li')) {
+                            const runs = await toRuns(li);
+                            children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun('')] }));
+                        }
+                    } else if (tag === 'ol') {
+                        for (const li of node.querySelectorAll(':scope > li')) {
+                            const runs = await toRuns(li);
+                            children.push(new Paragraph({ numbering: { reference: 'ol-ref', level: 0 }, spacing: { after: 80 }, children: runs.length ? runs : [new TextRun('')] }));
+                        }
+                    } else if (tag === 'blockquote') {
+                        const runs = await toRuns(node, false, true); 
+                        children.push(new Paragraph({ indent: { left: mmToTwip(10) }, children: runs.length ? runs : [new TextRun('')] }));
+                    } else if (tag === 'hr') {
+                        children.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'AAAAAA' } }, children: [new TextRun('')] }));
+                    }
+                }
+
+                if (!children.length) children.push(new Paragraph({ children: [new TextRun('')] }));
+
+                const doc = new Document({
+                    numbering: {
+                        config: [{
+                            reference: 'ol-ref',
+                            levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.LEFT,
+                                style: { paragraph: { indent: { left: mmToTwip(12), hanging: mmToTwip(6) } } } }]
+                        }]
+                    },
+                    sections: [{
+                        properties: {
+                            page: {
+                                size: { width: mmToTwip(210), height: mmToTwip(297) },
+                                margin: { top: mmToTwip(mt), right: mmToTwip(mr), bottom: mmToTwip(mb), left: mmToTwip(ml) }
+                            }
+                        },
+                        children
+                    }]
+                });
+
+                const blob = await Packer.toBlob(doc);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = '排版文档_纯净DOCX.docx';
+                a.click();
+
+            } catch (err) {
+                console.error('DOCX导出错误:', err);
+                alert('生成 Word 文档失败：' + err.message);
+            } finally {
+                if (exportBtn) { exportBtn.innerHTML = originalText; exportBtn.disabled = false; }
+            }
+        }
+
+        async function exportPDF() {
+            const btn = document.getElementById('export-btn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+
+            try {
+                await new Promise(r => setTimeout(r, 100));
+                
+                const pages = document.querySelectorAll('.a4-page');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    
+                    btn.innerHTML = `处理中 ${i + 1}/${pages.length}...`;
+                    
+                    const oldShadow = page.style.boxShadow;
+                    page.style.boxShadow = 'none';
+                    
+                    const canvas = await html2canvas(page, { 
+                        scale: 3, 
+                        useCORS: true,
+                        logging: false
+                    });
+                    
+                    page.style.boxShadow = oldShadow;
+                    
+                    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                    
+                    if (i > 0) {
+                        pdf.addPage();
+                    }
+                    
+                    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+                }
+
+                pdf.save('排版文档.pdf');
+                
+            } catch (error) {
+                console.error("PDF生成错误:", error);
+                alert("生成 PDF 时发生错误，请重试。");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function downloadHtml() {
+            document.getElementById('editor').textContent = editor.value;
+            const blob = new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], { type: 'text/html' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'Markdown排版工具1.0.html';
+            a.click();
+        }
+
+        editor.addEventListener('input', () => {
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => parseAndRender(editor.value), 400);
         });
 
-        let img = canvas.toDataURL("image/jpeg",1);
-
-        if(i>0) pdf.addPage();
-        pdf.addImage(img,'JPEG',0,0,210,297);
-    }
-
-    pdf.save("论文.pdf");
-}
-
-render();
-</script>
-
+        window.addEventListener('DOMContentLoaded', () => { updateStyles(); parseAndRender(editor.value); });
+    </script>
 </body>
 </html>
